@@ -1,0 +1,7 @@
+opencv-python
+groq
+pillow
+python-dotenv
+requests
+streamlit
+streamlit-option-menu
