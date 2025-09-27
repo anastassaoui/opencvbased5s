@@ -2,7 +2,7 @@ import streamlit as st
 import tempfile
 import os
 from pathlib import Path
-from analyze_rca import analyze_workplace, generate_analysis_mindmap, generate_improvement_wbs, create_plantuml_diagram
+from analyze_rca import analyze_workplace, generate_analysis_mindmap, generate_improvement_wbs, generate_analysis_json, create_plantuml_diagram
 from streamlit_option_menu import option_menu
 from dotenv import load_dotenv
 
@@ -21,7 +21,7 @@ st.markdown("""
 <style>
     .main-header {
         text-align: center;
-        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(90deg, #000000 0%, #333333 100%);
         color: white;
         padding: 2rem;
         border-radius: 15px;
@@ -34,12 +34,12 @@ st.markdown("""
         padding: 1.5rem;
         border-radius: 12px;
         box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-        border-left: 4px solid #667eea;
+        border-left: 4px solid #000000;
         margin: 1rem 0;
     }
 
     .upload-zone {
-        border: 2px dashed #667eea;
+        border: 2px dashed #000000;
         border-radius: 15px;
         padding: 2rem;
         text-align: center;
@@ -87,6 +87,19 @@ st.markdown("""
         gap: 1rem;
         margin: 2rem 0;
     }
+
+    .api-key-section {
+        background: #f8f9fa;
+        border: 1px solid #000000;
+        border-radius: 10px;
+        padding: 1.5rem;
+        margin: 1rem 0;
+    }
+
+    .api-key-section h4 {
+        color: #000000;
+        margin-bottom: 1rem;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -98,20 +111,62 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Get API key from environment
-api_key = os.getenv("GROQ_API_KEY")
+# API Key Management
+if 'api_key' not in st.session_state:
+    st.session_state.api_key = ""
+
+# API Key Input Section
+with st.expander(" Groq API Key Configuration", expanded=not st.session_state.api_key):
+    st.markdown('<div class="api-key-section">', unsafe_allow_html=True)
+
+    col1, col2 = st.columns([2, 1])
+
+    with col1:
+        new_api_key = st.text_input(
+            "Enter your Groq API Key:",
+            value=st.session_state.api_key,
+            type="password",
+            placeholder="gsk_...",
+            help="Your API key is stored securely in your browser session and never saved permanently."
+        )
+
+        if new_api_key != st.session_state.api_key:
+            st.session_state.api_key = new_api_key
+            if new_api_key:
+                st.success("✅ API key updated successfully!")
+            st.rerun()
+
+    with col2:
+        st.markdown("""
+        **Get your free API key:**
+
+        🔗 [Sign up at Groq Console](https://console.groq.com/keys)
+
+        **Steps:**
+        1. Create a free account
+        2. Go to API Keys section
+        3. Create new API key
+        4. Copy and paste here
+        """)
+
+    if st.session_state.api_key:
+        st.success(f"🟢 API Key configured (ends with ...{st.session_state.api_key[-4:]})")
+    else:
+        st.warning("⚠️ Please enter your Groq API key to use the analysis features.")
+
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # Navigation menu
 selected = option_menu(
     menu_title=None,
-    options=["Analysis", "Root Cause Map", "Resolution Plan", "Settings"],
-    icons=["search", "diagram-2", "kanban", "gear"],
+    options=["Analysis", "Root Cause Map", "Resolution Plan", "JSON Data", "Settings"],
+    icons=["search", "diagram-2", "kanban", "file-earmark-code", "gear"],
     menu_icon="cast",
     default_index=0,
     orientation="horizontal",
     styles={
         "container": {"padding": "0!important", "background-color": "transparent"},
-        "icon": {"color": "#667eea", "font-size": "18px"},
+        "icon": {"color": "#000000", "font-size": "18px"},
         "nav-link": {
             "font-size": "16px",
             "text-align": "center",
@@ -119,7 +174,7 @@ selected = option_menu(
             "padding": "10px",
             "--hover-color": "#eee",
         },
-        "nav-link-selected": {"background-color": "#667eea"},
+        "nav-link-selected": {"background-color": "#000000"},
     },
 )
 
@@ -128,11 +183,11 @@ if selected == "Analysis":
     col_status1, col_status2, col_status3 = st.columns(3)
 
     with col_status1:
-        status_color = "success" if api_key else "error"
+        status_color = "success" if st.session_state.api_key else "error"
         st.markdown(f"""
         <div class="metric-card">
             <span class="status-indicator status-{status_color}"></span>
-            <strong>API Status:</strong> {'Connected' if api_key else 'Not Configured'}
+            <strong>API Status:</strong> {'Connected' if st.session_state.api_key else 'Not Configured'}
         </div>
         """, unsafe_allow_html=True)
 
@@ -146,12 +201,18 @@ if selected == "Analysis":
         """, unsafe_allow_html=True)
 
     with col_status3:
-        diagrams_ready = hasattr(st.session_state, 'mindmap_path') and hasattr(st.session_state, 'wbs_path')
-        diagram_status = "success" if diagrams_ready else "warning"
+        diagrams_ready = (hasattr(st.session_state, 'mindmap_path') and
+                         hasattr(st.session_state, 'wbs_path') and
+                         hasattr(st.session_state, 'json_path'))
+        partial_diagrams = (hasattr(st.session_state, 'mindmap_path') or
+                           hasattr(st.session_state, 'wbs_path') or
+                           hasattr(st.session_state, 'json_path'))
+        diagram_status = "success" if diagrams_ready else ("warning" if partial_diagrams else "error")
+        diagram_text = "All Ready" if diagrams_ready else ("Partial" if partial_diagrams else "Not Generated")
         st.markdown(f"""
         <div class="metric-card">
             <span class="status-indicator status-{diagram_status}"></span>
-            <strong>Diagrams:</strong> {'Ready' if diagrams_ready else 'Not Generated'}
+            <strong>Diagrams:</strong> {diagram_text}
         </div>
         """, unsafe_allow_html=True)
 
@@ -174,8 +235,8 @@ if selected == "Analysis":
             st.image(uploaded_file, caption="Uploaded Workplace Image", use_container_width=True)
 
             # Analysis button with modern styling
-            if st.button("Start AI Analysis", type="primary", use_container_width=True, disabled=not api_key):
-                if not api_key:
+            if st.button("Start AI Analysis", type="primary", use_container_width=True, disabled=not st.session_state.api_key):
+                if not st.session_state.api_key:
                     st.error("API key not configured. Please check your .env file.")
                 else:
                     progress_bar = st.progress(0)
@@ -194,7 +255,7 @@ if selected == "Analysis":
                         progress_bar.progress(50)
 
                         # Perform analysis
-                        analysis_result = analyze_workplace(temp_path)
+                        analysis_result = analyze_workplace(temp_path, st.session_state.api_key)
                         progress_bar.progress(75)
 
                         status_text.text("Generating results...")
@@ -255,7 +316,7 @@ elif selected == "Root Cause Map":
                     if hasattr(st.session_state, 'analysis_result'):
                         with st.spinner("Creating root cause map visualization..."):
                             try:
-                                mindmap_code = generate_analysis_mindmap(st.session_state.analysis_result)
+                                mindmap_code = generate_analysis_mindmap(st.session_state.analysis_result, st.session_state.api_key)
                                 mindmap_path = create_plantuml_diagram(mindmap_code, "analysis_mindmap")
 
                                 if mindmap_path and os.path.exists(mindmap_path):
@@ -293,7 +354,7 @@ elif selected == "Resolution Plan":
                     if hasattr(st.session_state, 'analysis_result'):
                         with st.spinner("Creating resolution plan..."):
                             try:
-                                wbs_code = generate_improvement_wbs(st.session_state.analysis_result)
+                                wbs_code = generate_improvement_wbs(st.session_state.analysis_result, st.session_state.api_key)
                                 wbs_path = create_plantuml_diagram(wbs_code, "improvement_wbs")
 
                                 if wbs_path and os.path.exists(wbs_path):
@@ -309,13 +370,73 @@ elif selected == "Resolution Plan":
     else:
         st.info("Please complete an analysis first to generate resolution plan")
 
+elif selected == "JSON Data":
+    st.markdown("### Structured Root Cause Analysis Data")
+
+    if hasattr(st.session_state, 'analysis_complete') and st.session_state.analysis_complete:
+        if hasattr(st.session_state, 'json_path') and os.path.exists(st.session_state.json_path):
+            st.image(st.session_state.json_path, use_container_width=True)
+
+            col1, col2 = st.columns(2)
+            with col1:
+                with open(st.session_state.json_path, "rb") as file:
+                    st.download_button(
+                        label="Download JSON Diagram",
+                        data=file.read(),
+                        file_name="root_cause_analysis_data.png",
+                        mime="image/png",
+                        use_container_width=True
+                    )
+
+            with col2:
+                if hasattr(st.session_state, 'json_code'):
+                    st.download_button(
+                        label="Download Raw JSON Data",
+                        data=st.session_state.json_code,
+                        file_name="root_cause_analysis_data.json",
+                        mime="application/json",
+                        use_container_width=True
+                    )
+        else:
+            col1, col2 = st.columns([1, 1])
+            with col1:
+                if st.button("Generate JSON Data", use_container_width=True, type="primary"):
+                    if hasattr(st.session_state, 'analysis_result'):
+                        with st.spinner("Creating structured JSON data visualization..."):
+                            try:
+                                json_code = generate_analysis_json(st.session_state.analysis_result, st.session_state.api_key)
+                                json_path = create_plantuml_diagram(json_code, "analysis_json")
+
+                                if json_path and os.path.exists(json_path):
+                                    st.session_state.json_path = json_path
+                                    st.session_state.json_code = json_code
+                                    st.success("JSON data diagram generated!")
+                                    st.rerun()
+                                else:
+                                    st.error("Failed to generate JSON data diagram")
+                            except Exception as e:
+                                st.error(f"JSON data generation failed: {str(e)}")
+                    else:
+                        st.warning("Please complete an analysis first")
+
+            with col2:
+                st.info("""
+                **JSON Data Benefits:**
+                - Machine-readable structured data
+                - Easy integration with other systems
+                - Standardized format for tracking
+                - API-ready data structure
+                """)
+    else:
+        st.info("Please complete an analysis first to generate JSON data")
+
 elif selected == "Settings":
     st.markdown("### Configuration")
 
-    if api_key:
-        st.success(f"Groq API Key: Configured (ends with ...{api_key[-4:]})")
+    if st.session_state.api_key:
+        st.success(f"Groq API Key: Configured (ends with ...{st.session_state.api_key[-4:]})")
     else:
-        st.error("Groq API Key: Not found in .env file")
+        st.info("💡 You can now enter your API key using the configuration section above instead of using a .env file.")
         st.code('GROQ_API_KEY=your_api_key_here')
 
 # Footer

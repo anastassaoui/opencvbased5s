@@ -11,8 +11,7 @@ import json
 # Load environment variables
 load_dotenv()
 
-# Setup
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+# Note: Client will be initialized with API key in each function call
 
 def process_image(image_path):
     """Simple image processing"""
@@ -27,10 +26,16 @@ def process_image(image_path):
     _, buffer = cv2.imencode('.jpg', img)
     return base64.b64encode(buffer).decode()
 
-def analyze_workplace(image_path):
+def analyze_workplace(image_path, api_key=None):
     """Analyze workplace image for Root Cause Analysis"""
     # Process image
     base64_image = process_image(image_path)
+
+    # Initialize Groq client with provided API key
+    if not api_key:
+        raise ValueError("API key is required. Please provide a valid Groq API key.")
+
+    client = Groq(api_key=api_key)
 
     # Send to Groq
     response = client.chat.completions.create(
@@ -46,8 +51,14 @@ def analyze_workplace(image_path):
 
     return response.choices[0].message.content
 
-def generate_analysis_mindmap(analysis_text):
+def generate_analysis_mindmap(analysis_text, api_key=None):
     """Generate PlantUML mind map documenting Root Cause Analysis findings"""
+
+    # Initialize Groq client with provided API key
+    if not api_key:
+        raise ValueError("API key is required. Please provide a valid Groq API key.")
+
+    client = Groq(api_key=api_key)
 
     # Ask Groq to generate PlantUML code based on the analysis
     response = client.chat.completions.create(
@@ -93,8 +104,14 @@ Replace placeholders with actual findings from the analysis. Use the color codes
 
     return response.choices[0].message.content
 
-def generate_improvement_wbs(analysis_text):
+def generate_improvement_wbs(analysis_text, api_key=None):
     """Generate PlantUML WBS diagram for Root Cause resolution project breakdown"""
+
+    # Initialize Groq client with provided API key
+    if not api_key:
+        raise ValueError("API key is required. Please provide a valid Groq API key.")
+
+    client = Groq(api_key=api_key)
 
     # Ask Groq to generate WBS diagram based on the analysis
     response = client.chat.completions.create(
@@ -138,6 +155,117 @@ Use this EXACT format and create specific tasks based on the issues identified:
 Adjust the tasks based on the specific problems and root causes found in the analysis. Focus more detailed tasks on the higher severity issues. If critical safety issues were found, expand the emergency response section.
 
 Return ONLY the PlantUML WBS code, no markdown, no explanation, no code blocks."""
+        }]
+    )
+
+    return response.choices[0].message.content
+
+def generate_analysis_json(analysis_text, api_key=None):
+    """Generate PlantUML JSON diagram for structured Root Cause Analysis data"""
+
+    # Initialize Groq client with provided API key
+    if not api_key:
+        raise ValueError("API key is required. Please provide a valid Groq API key.")
+
+    client = Groq(api_key=api_key)
+
+    # Ask Groq to generate JSON diagram based on the analysis
+    response = client.chat.completions.create(
+        model="meta-llama/llama-4-scout-17b-16e-instruct",
+        messages=[{
+            "role": "user",
+            "content": f"""Based on this workplace Root Cause Analysis, create a structured PlantUML JSON diagram that organizes all findings into machine-readable format.
+
+Analysis: {analysis_text}
+
+Use this EXACT format and structure the data based on the analysis findings:
+@startjson
+{{
+  "root_cause_analysis": {{
+    "summary": {{
+      "total_issues_identified": 0,
+      "critical_issues": 0,
+      "high_priority_issues": 0,
+      "medium_priority_issues": 0,
+      "low_priority_issues": 0,
+      "estimated_resolution_timeframe": "",
+      "immediate_actions_required": 0
+    }},
+    "issues": {{
+      "critical": [
+        {{
+          "issue_id": "CRIT-001",
+          "problem_description": "",
+          "immediate_cause": "",
+          "root_cause": "",
+          "severity_impact": "",
+          "recommended_action": "",
+          "timeline": "",
+          "resources_needed": "",
+          "responsible_party": ""
+        }}
+      ],
+      "high": [
+        {{
+          "issue_id": "HIGH-001",
+          "problem_description": "",
+          "immediate_cause": "",
+          "root_cause": "",
+          "severity_impact": "",
+          "recommended_action": "",
+          "timeline": "",
+          "resources_needed": "",
+          "responsible_party": ""
+        }}
+      ],
+      "medium": [
+        {{
+          "issue_id": "MED-001",
+          "problem_description": "",
+          "immediate_cause": "",
+          "root_cause": "",
+          "severity_impact": "",
+          "recommended_action": "",
+          "timeline": "",
+          "resources_needed": "",
+          "responsible_party": ""
+        }}
+      ],
+      "low": [
+        {{
+          "issue_id": "LOW-001",
+          "problem_description": "",
+          "immediate_cause": "",
+          "root_cause": "",
+          "severity_impact": "",
+          "recommended_action": "",
+          "timeline": "",
+          "resources_needed": "",
+          "responsible_party": ""
+        }}
+      ]
+    }},
+    "monitoring_areas": [
+      {{
+        "area": "",
+        "observation": "",
+        "potential_risk": "",
+        "prevention_measure": ""
+      }}
+    ],
+    "recommendations": {{
+      "immediate_actions": [],
+      "short_term_improvements": [],
+      "long_term_strategies": [],
+      "prevention_measures": []
+    }}
+  }}
+}}
+@endjson
+
+Replace all placeholder values with actual findings from the analysis. Populate each severity category with the specific issues found. If no issues exist for a category, use an empty array. Update the summary counts to match the actual findings. Focus on creating actionable, structured data that can be used for tracking and reporting.
+
+Return ONLY the PlantUML JSON code, no markdown, no explanation, no code blocks."""
         }]
     )
 
